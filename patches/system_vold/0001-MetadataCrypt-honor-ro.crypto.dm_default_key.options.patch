@@ -1,0 +1,47 @@
+From 1dd910750a891dc1ca873fe5250f34f23e6a84dc Mon Sep 17 00:00:00 2001
+From: "Davide Palma (ElDavo)" <github@davidepalma.it>
+Date: Thu, 12 Nov 2026 21:03:54 +0100
+Subject: [PATCH] MetadataCrypt: honor
+ ro.crypto.dm_default_key.options_format.version
+
+AOSP and LineageOS vold take the dm-default-key options format from this
+property when the ROM sets it. Honor it the same way so the recovery
+follows the installed ROM, and log the key sizes and table options used
+for the default-key device (no key material), which is what exposed the
+legacy/v2 mixup on apollo.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Wa3ghSNZcJdbnohyycUnSk
+---
+ MetadataCrypt.cpp | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/MetadataCrypt.cpp b/MetadataCrypt.cpp
+index bc2e7ea..2ee8195 100644
+--- a/MetadataCrypt.cpp
++++ b/MetadataCrypt.cpp
+@@ -170,6 +170,10 @@ static bool create_crypto_blk_dev(const std::string& dm_name, const std::string&
+         return false;
+     }
+     std::string hex_key(hex_key_buffer.data(), hex_key_buffer.size());
++    LOG(INFO) << "default-key " << dm_name << ": stored key " << key.size()
++              << " bytes, kernel key " << module_key.size() << " bytes, hw_wrapped="
++              << options.use_hw_wrapped_key << " legacy=" << options.use_legacy_options_format
++              << " set_dun=" << options.set_dun << " cipher=" << options.cipher.get_kernel_name();
+ 
+     auto target = std::make_unique<DmTargetDefaultKey>(0, *nr_sec, options.cipher.get_kernel_name(),
+                                                        hex_key, blk_device, 0);
+@@ -331,6 +335,10 @@ bool fscrypt_mount_metadata_encrypted(const std::string& blk_device, const std::
+         }
+         options_format_version = options.version;
+     }
++    // AOSP/LineageOS vold take the format from this property when the ROM sets
++    // it; honor it the same way (prepare-crypto copies it from the ROM).
++    options_format_version = android::base::GetUintProperty<unsigned int>(
++            "ro.crypto.dm_default_key.options_format.version", options_format_version);
+ 
+     CryptoOptions options;
+     if (options_format_version == 1) {
+-- 
+2.56.0
+

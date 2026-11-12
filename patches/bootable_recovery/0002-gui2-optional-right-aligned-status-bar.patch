@@ -1,0 +1,76 @@
+From c19dc7156f5787e1d77e12d8f5836901a999929a Mon Sep 17 00:00:00 2001
+From: "Davide Palma (ElDavo)" <github@davidepalma.it>
+Date: Thu, 12 Nov 2026 21:03:54 +0100
+Subject: [PATCH 2/2] gui2: optional right-aligned status bar
+
+ro.twrp.gui2.status_right=true moves the clock (and recording
+indicator) next to the battery/wifi icons on the right, for devices
+with a camera cutout in the top-left corner.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Wa3ghSNZcJdbnohyycUnSk
+---
+ gui2/shell/status_bar.cpp | 34 ++++++++++++++++++++++++++++------
+ 1 file changed, 28 insertions(+), 6 deletions(-)
+
+diff --git a/gui2/shell/status_bar.cpp b/gui2/shell/status_bar.cpp
+index 1c5fa4d..a2dd5b4 100644
+--- a/gui2/shell/status_bar.cpp
++++ b/gui2/shell/status_bar.cpp
+@@ -3,6 +3,8 @@
+ #include <algorithm>
+ #include <cstdio>
+ 
++#include <android-base/properties.h>
++
+ #include "components/icon.h"
+ #include "core/ui_helpers.h"
+ #include "gui2_svg_assets.h"
+@@ -96,18 +98,38 @@ void layout_status_bar(const status_bar_view& view, const gui2_core::ui_metrics&
+   const int content_height = metrics.status_height - metrics.status_top_padding;
+   const int y =
+       metrics.status_top_padding + (content_height - metrics.status_font->line_height) / 2;
+-  lv_obj_align(view.time_label, LV_ALIGN_TOP_LEFT, metrics.outer_margin, y);
+-  if (view.recording_indicator != nullptr)
+-    lv_obj_align_to(view.recording_indicator, view.time_label, LV_ALIGN_OUT_RIGHT_MID,
+-                    gui2_core::ui_px(12), 0);
++  // Devices with a camera cutout in the top-left corner set
++  // ro.twrp.gui2.status_right=true to keep every status item on the right.
++  static const bool all_right = android::base::GetBoolProperty("ro.twrp.gui2.status_right", false);
++  if (!all_right) {
++    lv_obj_align(view.time_label, LV_ALIGN_TOP_LEFT, metrics.outer_margin, y);
++    if (view.recording_indicator != nullptr)
++      lv_obj_align_to(view.recording_indicator, view.time_label, LV_ALIGN_OUT_RIGHT_MID,
++                      gui2_core::ui_px(12), 0);
++  }
++  lv_obj_t* leftmost = nullptr;
+   if (view.battery_value != nullptr) {
+     lv_obj_align(view.battery_value, LV_ALIGN_TOP_RIGHT, -metrics.outer_margin, y);
+-    if (view.battery_icon != nullptr)
++    leftmost = view.battery_value;
++    if (view.battery_icon != nullptr) {
+       lv_obj_align_to(view.battery_icon, view.battery_value, LV_ALIGN_OUT_LEFT_MID,
+                       -gui2_core::ui_px(12), 0);
+-    if (view.wifi_icon != nullptr && view.battery_icon != nullptr)
++      leftmost = view.battery_icon;
++    }
++    if (view.wifi_icon != nullptr && view.battery_icon != nullptr) {
+       lv_obj_align_to(view.wifi_icon, view.battery_icon, LV_ALIGN_OUT_LEFT_MID,
+                       -gui2_core::ui_px(12), 0);
++      if (!lv_obj_has_flag(view.wifi_icon, LV_OBJ_FLAG_HIDDEN)) leftmost = view.wifi_icon;
++    }
++  }
++  if (all_right) {
++    if (leftmost != nullptr)
++      lv_obj_align_to(view.time_label, leftmost, LV_ALIGN_OUT_LEFT_MID, -gui2_core::ui_px(24), 0);
++    else
++      lv_obj_align(view.time_label, LV_ALIGN_TOP_RIGHT, -metrics.outer_margin, y);
++    if (view.recording_indicator != nullptr)
++      lv_obj_align_to(view.recording_indicator, view.time_label, LV_ALIGN_OUT_LEFT_MID,
++                      -gui2_core::ui_px(12), 0);
+   }
+ }
+ 
+-- 
+2.56.0
+

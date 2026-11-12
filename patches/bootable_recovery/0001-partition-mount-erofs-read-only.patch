@@ -1,0 +1,33 @@
+From aceef6bc107c95aebfe463c6e63f6fc3e842aa10 Mon Sep 17 00:00:00 2001
+From: "Davide Palma (ElDavo)" <github@davidepalma.it>
+Date: Thu, 12 Nov 2026 21:03:54 +0100
+Subject: [PATCH 1/2] partition: mount erofs read-only
+
+erofs is read-only; a read-write mount fails with EACCES while the dm
+device is still read-only early in boot, so vendor/odm (erofs on
+LineageOS apollo) never mounted.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Wa3ghSNZcJdbnohyycUnSk
+---
+ partition.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/partition.cpp b/partition.cpp
+index 4c6e94b..d138f23 100755
+--- a/partition.cpp
++++ b/partition.cpp
+@@ -1428,7 +1428,9 @@ bool TWPartition::MountFilesystem(const bool display_error) {
+         TWFunc::IsPathExists("/sys/module/tntfs")) current_file_system_ = "tntfs";
+   }
+ 
+-  if (mount_read_only_) flags |= MS_RDONLY;
++  // erofs is read-only; a read-write mount fails with EACCES while the dm
++  // device is still read-only early in boot
++  if (mount_read_only_ || current_file_system_ == "erofs") flags |= MS_RDONLY;
+ 
+   std::string mount_fs = current_file_system_;
+   if (current_file_system_ == "exfat" &&
+-- 
+2.56.0
+

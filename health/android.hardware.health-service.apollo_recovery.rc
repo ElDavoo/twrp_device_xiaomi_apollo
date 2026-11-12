@@ -1,0 +1,15 @@
+# AOSP default AIDL health HAL (hardware/interfaces/health/aidl/default),
+# built for recovery without its VINTF fragment: the fragment is a device
+# manifest, and installing it into recovery's framework manifest directory
+# makes hwservicemanager reject the whole manifest, which takes down the
+# HIDL keymaster/gatekeeper. IHealth/default is already declared in
+# recovery/root/system/etc/vintf/manifest.xml. Started from
+# init.recovery.qcom.rc once /sys/class/power_supply/battery exists.
+service vendor.health-default /system/bin/hw/android.hardware.health-service.apollo_recovery
+    class hal
+    disabled
+    user system
+    group system
+    capabilities WAKE_ALARM BLOCK_SUSPEND
+    file /dev/kmsg w
+    seclabel u:r:recovery:s0

@@ -1,0 +1,15 @@
+soong_namespace {}
+
+// Battery status for TWRP: AOSP's default AIDL health HAL (reads
+// /sys/class/power_supply). Same source as
+// android.hardware.health-service.example_recovery, minus its VINTF fragment.
+cc_binary {
+    name: "android.hardware.health-service.apollo_recovery",
+    recovery: true,
+    relative_install_path: "hw",
+    defaults: ["libhealth_aidl_impl_user"],
+    static_libs: ["libhealth_aidl_impl"],
+    srcs: ["health/main.cpp"],
+    init_rc: ["health/android.hardware.health-service.apollo_recovery.rc"],
+    overrides: ["charger.recovery"],
+}

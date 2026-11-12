@@ -1,0 +1,4 @@
+# Crypto props copied from the ROM vendor build.prop (wrapped-key ICE FBE)
+ro.crypto.allow_encrypt_override=true
+ro.crypto.volume.filenames_mode=aes-256-cts
+ro.hardware.keystore_desede=true
