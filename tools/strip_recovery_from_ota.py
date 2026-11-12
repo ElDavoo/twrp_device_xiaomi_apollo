@@ -3,7 +3,7 @@
 
 Every other entry is copied byte-for-byte with its original compression; the
 updater-script loses only the two lines that print and write recovery.img.
-The result is unsigned (TWRP installs it with zip verification off).
+The result is unsigned (YARP installs it with zip verification off).
 """
 import sys, zipfile, shutil
 

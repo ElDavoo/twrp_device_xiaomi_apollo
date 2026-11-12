@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 The LineageOS Project
 # SPDX-License-Identifier: Apache-2.0
 
-# TWRP recovery.fstab for Xiaomi Apollo (Redmi Note 9 Pro 5G / Mi 10T Lite / Mi 10i)
+# recovery.fstab for Xiaomi apollo (Mi 10T Pro / Mi 10T / Redmi K30S Ultra)
 # Non-A/B, boot header v2, dynamic partitions on "super"
 
 # Logical (dynamic) partitions — no slotselect on non-A/B device
@@ -22,14 +22,14 @@ odm                                 /odm            erofs   ro                  
 # Userdata — FBE with dm-default-key + wrappedkey_v0 (UFS controller 1d84000.ufshc)
 /dev/block/bootdevice/by-name/userdata /data       f2fs    noatime,nosuid,nodev,discard,reserve_root=32768,resgid=1065,fsync_mode=nobarrier,inlinecrypt    latemount,wait,check,formattable,fileencryption=ice,wrappedkey,keydirectory=/metadata/vold/metadata_encryption,quota,reservedsize=128M,sysfs_path=/sys/devices/platform/soc/1d84000.ufshc,checkpoint=fs
 
-# Misc / boot / recovery partitions (for TWRP image flashing)
+# Misc / boot / recovery partitions (for YARP image flashing)
 /dev/block/bootdevice/by-name/misc  /misc           emmc    defaults                                                         defaults
 /dev/block/bootdevice/by-name/boot  /boot           emmc    defaults                                                         defaults
 /dev/block/bootdevice/by-name/recovery /recovery   emmc    defaults                                                         defaults
 /dev/block/bootdevice/by-name/cache /cache          ext4    noatime,nosuid,nodev,barrier=1,data=ordered                     wait,check
 
 # Persist — board-critical data (IMEI, MAC, RF calibration, DRM nonces).
-# Mounted READ-ONLY; never formatable through TWRP under any circumstances.
+# Mounted READ-ONLY; never formatable through YARP under any circumstances.
 /dev/block/bootdevice/by-name/persist /mnt/vendor/persist ext4 ro,noatime,nosuid,nodev,barrier=1    wait
 
 # External storage

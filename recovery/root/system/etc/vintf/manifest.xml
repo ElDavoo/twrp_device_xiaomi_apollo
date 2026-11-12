@@ -16,7 +16,7 @@
     android.hidl.memory@1.0 passthrough is also required by HIDL binder
     transport (hwbinder uses ashmem for shared memory).
 
-    Must stay parseable by TWRP's libvintf (4.0) — keep it minimal.
+    Must stay parseable by YARP's libvintf (4.0) — keep it minimal.
 -->
 <manifest version="1.0" type="framework">
     <!-- HIDL manager: keeps hwservicemanager alive for HIDL keymaster-4-0 -->

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Extract the minimal vendor blob set needed for keymaster-4-0, gatekeeper-1-0
-# and qseecomd to run inside the TWRP ramdisk (so /vendor never has to be
+# and qseecomd to run inside the YARP ramdisk (so /vendor never has to be
 # mounted for decryption).
 #
 # The lib list is the union of the runtime /proc/<pid>/maps of qseecomd,
@@ -93,7 +93,7 @@ for lib in $LIBS; do
 done
 
 # NOTE: do NOT pull libsqlite.so from the ROM — the A16 build references ICU
-# symbols (e.g. ucol_setStrength_android) missing from TWRP's libicuuc.
+# symbols (e.g. ucol_setStrength_android) missing from YARP's libicuuc.
 # Instead the tree builds its own matching libsqlite (device.mk PRODUCT_PACKAGES).
 
 # Note: the keymaster TA itself is loaded into the TEE by the bootloader
@@ -101,7 +101,7 @@ done
 # file on the filesystem to pull. qseecomd only needs /dev/qseecom.
 
 # NOTE: do NOT pull /vendor/etc/vintf/manifest.xml — the ROM's A16 manifest
-# (manifest.version 9.0) is unparseable by TWRP's libvintf and would make
+# (manifest.version 9.0) is unparseable by YARP's libvintf and would make
 # hwservicemanager refuse keymaster registration. A minimal hand-written
 # manifest lives at recovery/root/vendor/etc/vintf/manifest.xml.
 

@@ -146,7 +146,7 @@ BOARD_AVB_RECOVERY_ROLLBACK_INDEX_LOCATION := 1
 # partition names, which makes fs_mgr_update_logical_partition() fail.
 AB_OTA_UPDATER := false
 
-# TWRP specific build flags
+# Recovery build flags (YARP keeps the TW_* names from TWRP)
 TARGET_RECOVERY_QCOM_RTC_FIX := true
 TARGET_RECOVERY_PIXEL_FORMAT := RGBX_8888
 TARGET_USE_CUSTOM_LUN_FILE_PATH := /config/usb_gadget/g1/functions/mass_storage.0/lun.%d/file
@@ -161,7 +161,7 @@ TW_INCLUDE_CRYPTO := true
 TW_INCLUDE_CRYPTO_FBE := true
 TW_INCLUDE_FBE_METADATA_DECRYPT := true
 TW_USE_FSCRYPT_POLICY := 1
-# Keeps datamedia=true from process start (twrp.cpp main). Without it TWRP
+# Keeps datamedia=true from process start (twrp.cpp main). Without it YARP
 # treats /sdcard as settings storage, and UnMount_Main_Partitions unmounts
 # /data after DE decrypt; the PIN-time remount in Decrypt_Device then falls
 # back to the raw block device (Is_Decrypted is false until CE unlock) and
@@ -188,7 +188,7 @@ RECOVERY_LIBRARY_SOURCE_FILES += \
     $(TARGET_OUT_SHARED_LIBRARIES)/libion.so \
     $(TARGET_OUT_SHARED_LIBRARIES)/libxml2.so
 
-# TWRP Debug Flags
+# Debug flags
 TARGET_USES_LOGD := true
 TWRP_INCLUDE_LOGCAT := true
 TARGET_RECOVERY_DEVICE_MODULES += debuggerd
@@ -199,13 +199,13 @@ RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/strace
 #
 # For local builds only
 #
-# TWRP zip installer
+# Zip installer
 ifneq ($(wildcard bootable/recovery/installer/.),)
     USE_RECOVERY_INSTALLER := true
     RECOVERY_INSTALLER_PATH := bootable/recovery/installer
 endif
 
-# Custom TWRP Versioning
+# Custom version string
 ifneq ($(wildcard device/common/version-info/.),)
     include device/common/version-info/custom_twrp_version.mk
 

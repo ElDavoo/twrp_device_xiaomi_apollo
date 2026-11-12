@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 The LineageOS Project
 # SPDX-License-Identifier: Apache-2.0
 
-# Inherit from TWRP common config
+# Inherit from the common recovery config (vendor/twrp, which YARP keeps from TWRP)
 $(call inherit-product, $(SRC_TARGET_DIR)/product/base.mk)
 $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
@@ -15,7 +15,7 @@ PRODUCT_PACKAGES += \
     qcom_decrypt \
     qcom_decrypt_fbe
 
-# keystore2 needs libsqlite.so; TWRP's static ld.config only searches
+# keystore2 needs libsqlite.so; YARP's static ld.config only searches
 # /system/lib64, so build our own (matching tree's ICU) instead of
 # borrowing the ROM's (ICU symbol mismatch).
 PRODUCT_PACKAGES += \

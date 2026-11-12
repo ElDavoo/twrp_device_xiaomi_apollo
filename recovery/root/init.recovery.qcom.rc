@@ -33,17 +33,17 @@ on fs
     start vendor.qseecomd
     start prepare-crypto
 
-    # Health HAL from ramdisk blobs: TWRP's battery monitor resolves
+    # Health HAL from ramdisk blobs: YARP's battery monitor resolves
     # IHealth/default over binder every 250 ms; without the service each
     # iteration fails the AIDL+HIDL lookups and falls back to a fake 100%.
     wait /sys/class/power_supply/battery
     start vendor.health-default
 
-# prepare-crypto waits for the super mapper devices (created by TWRP during
+# prepare-crypto waits for the super mapper devices (created by YARP during
 # Setup_Fstab_Partitions), temp-mounts system+vendor, resetprops the real
 # patchlevels and signals crypto.ready=1. keymaster must never start before
 # that: it caches ro.vendor.build.security_patch once at service start, and
-# TWRP's TW_OVERRIDE_SYSTEM_PROPS runs after the first decrypt attempt.
+# YARP's TW_OVERRIDE_SYSTEM_PROPS runs after the first decrypt attempt.
 # Still no "interface" line on purpose: it would let hwservicemanager
 # lazy-start keymaster before qseecomd is ready. Gatekeeper (CE unlock)
 # shares the keymasta TA instance with keymaster; starting it alongside is

@@ -4,7 +4,7 @@
 # crypto chain (crypto.ready=1 -> init starts keymaster-4-0). Modeled on
 # /odm/bin/prepdecrypt.sh from the reference tree.
 #
-# Synchronization with TWRP: the super mapper devices appear during
+# Synchronization with YARP: the super mapper devices appear during
 # Setup_Fstab_Partitions, and Decrypt_Data() then blocks in getService()
 # for keymaster for up to 25 s. Finishing within that window means keymaster
 # registers mid-wait with correct patchlevels already cached, and the single
