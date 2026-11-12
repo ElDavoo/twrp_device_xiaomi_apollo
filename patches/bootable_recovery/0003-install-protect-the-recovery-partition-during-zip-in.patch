@@ -1,0 +1,334 @@
+From 030a94d2be416a96442e900fb9c624af954ae95a Mon Sep 17 00:00:00 2001
+From: "Davide Palma (ElDavo)" <github@davidepalma.it>
+Date: Thu, 12 Nov 2026 22:39:53 +0100
+Subject: [PATCH] install: protect the recovery partition during zip installs
+
+Zips for devices with a dedicated recovery partition often flash their
+own recovery (LineageOS OTAs end with package_extract_file("recovery.img",
+".../by-name/recovery")), replacing this recovery on every update.
+
+While a zip runs, set the recovery block device read-only (BLKROSET) so
+any write path fails (edify, dd, by-name or raw node), after snapshotting
+it; afterwards clear the flag, compare, and write the snapshot back if
+the partition still changed. Controlled by tw_protect_recovery (default
+on), exposed in General settings and the install options on devices
+with a recovery partition.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Wa3ghSNZcJdbnohyycUnSk
+---
+ data.cpp                  |  1 +
+ gui2/gui2.cpp             |  4 ++
+ gui2/i18n/en.cpp          |  4 ++
+ gui2/i18n/i18n.cpp        |  3 ++
+ gui2/i18n/i18n.h          |  4 ++
+ gui2/i18n/ru.cpp          |  4 ++
+ gui2/i18n/zh_cn.cpp       |  4 ++
+ gui2/i18n/zh_tw.cpp       |  4 ++
+ twrpinstall/twinstall.cpp | 97 +++++++++++++++++++++++++++++++++++++++
+ variables.h               |  1 +
+ 10 files changed, 126 insertions(+)
+
+diff --git a/data.cpp b/data.cpp
+index c22ec4e..d677bf5 100644
+--- a/data.cpp
++++ b/data.cpp
+@@ -634,6 +634,7 @@ void DataManager::SetDefaultValues() {
+   persist_[TW_TIME_ZONE_GUIOFFSET] = false;
+   persist_[TW_TIME_ZONE_GUIDST] = false;
+   persist_[TW_AUTO_REFLASHTWRP_VAR] = false;
++  persist_[TW_PROTECT_RECOVERY_VAR] = true;
+ 
+ #ifdef TW_NO_FLASH_CURRENT_TWRP
+   consts_["tw_no_flash_current_twrp"] = true;
+diff --git a/gui2/gui2.cpp b/gui2/gui2.cpp
+index e308839..6a9863e 100644
+--- a/gui2/gui2.cpp
++++ b/gui2/gui2.cpp
+@@ -1557,6 +1557,8 @@ static void rebuild_general_settings_items(void) {
+   if (flag("tw_has_boot_slots", 0) != 0 && flag("tw_no_flash_current_twrp", 0) == 0 &&
+       flag("tw_is_vendor_boot_header_v3", 0) == 0)
+     add(nullptr, text.general_reflash_twrp, "tw_auto_reflashtwrp");
++  if (flag("tw_has_recovery_partition", 0) != 0)
++    add(nullptr, text.general_protect_recovery, "tw_protect_recovery");
+ 
+   add(text.general_group_wipe_backup, text.general_rm_rf, "tw_rm_rf");
+   add(nullptr, text.general_disable_free_space, "tw_disable_free_space");
+@@ -2908,6 +2910,8 @@ static void rebuild_install_options(void) {
+   if (flag("tw_has_boot_slots", 0) != 0 && flag("tw_no_flash_current_twrp", 0) == 0 &&
+       flag("tw_is_vendor_boot_header_v3", 0) == 0)
+     add(text.general_reflash_twrp, "tw_auto_reflashtwrp", flag("tw_auto_reflashtwrp", 0) != 0);
++  if (flag("tw_has_recovery_partition", 0) != 0)
++    add(text.general_protect_recovery, "tw_protect_recovery", flag("tw_protect_recovery", 1) != 0);
+   add(text.general_install_reboot, "tw_install_reboot", flag("tw_install_reboot", 0) != 0);
+ }
+ 
+diff --git a/gui2/i18n/en.cpp b/gui2/i18n/en.cpp
+index 632b532..117cdf1 100644
+--- a/gui2/i18n/en.cpp
++++ b/gui2/i18n/en.cpp
+@@ -379,6 +379,7 @@ extern const language_pack kEnglish = {
+   "Unmount System before install",
+   "Automatically disable AVB2.0",
+   "Reflash YARP after flashing a ROM",
++  "Protect recovery partition during zip install",
+   "Use rm -rf instead of formatting",
+   "Skip free space check before backup",
+   "Skip digest generation during backup",
+@@ -532,6 +533,9 @@ extern const language_pack kEnglish = {
+   "Size of image is larger than target device",
+   "Image to flash: '%s'",
+   "Install took %d second(s).",
++  "Recovery partition is write-protected during this install",
++  "The zip changed the recovery partition; the previous recovery was restored",
++  "Unable to protect or restore the recovery partition!",
+   "Install Recovery Ramdisk",
+   "Installing zip file '%s'",
+   "Internal Storage",
+diff --git a/gui2/i18n/i18n.cpp b/gui2/i18n/i18n.cpp
+index c1510a4..4aaf227 100644
+--- a/gui2/i18n/i18n.cpp
++++ b/gui2/i18n/i18n.cpp
+@@ -148,6 +148,9 @@ constexpr message_binding bindings[] = {
+     {"partitions", &language_pack::partitions},
+     {"pid_error", &language_pack::pid_error},
+     {"pid_signal", &language_pack::pid_signal},
++    {"protect_recovery_active", &language_pack::protect_recovery_active},
++    {"protect_recovery_failed", &language_pack::protect_recovery_failed},
++    {"protect_recovery_restored", &language_pack::protect_recovery_restored},
+     {"reboot_after_restore", &language_pack::reboot_after_restore},
+     {"rebooting", &language_pack::rebooting},
+     {"recovery", &language_pack::recovery},
+diff --git a/gui2/i18n/i18n.h b/gui2/i18n/i18n.h
+index de167e4..d48e72f 100644
+--- a/gui2/i18n/i18n.h
++++ b/gui2/i18n/i18n.h
+@@ -407,6 +407,7 @@ struct language_pack {
+   const char* general_unmount_system;
+   const char* general_disable_avb2;
+   const char* general_reflash_twrp;
++  const char* general_protect_recovery;
+   const char* general_rm_rf;
+   const char* general_disable_free_space;
+   const char* general_skip_digest_generate;
+@@ -527,6 +528,9 @@ struct language_pack {
+   const char* img_size_err;
+   const char* img_to_flash;
+   const char* install_took_seconds_msg;
++  const char* protect_recovery_active;
++  const char* protect_recovery_restored;
++  const char* protect_recovery_failed;
+   const char* install_twrp_ramdisk;
+   const char* installing_zip;
+   const char* internal;
+diff --git a/gui2/i18n/ru.cpp b/gui2/i18n/ru.cpp
+index 57a87c7..23810b6 100644
+--- a/gui2/i18n/ru.cpp
++++ b/gui2/i18n/ru.cpp
+@@ -379,6 +379,7 @@ extern const language_pack kRussian = {
+   "Отмонтировать System перед установкой",
+   "Автоматически отключать AVB2.0",
+   "Перепрошить YARP после прошивки ROM",
++  "Защищать раздел recovery при установке zip",
+   "Использовать rm -rf вместо форматирования",
+   "Пропустить проверку свободного места перед резервным копированием",
+   "Пропустить генерацию контрольной суммы во время резервного копирования",
+@@ -532,6 +533,9 @@ extern const language_pack kRussian = {
+   "Размер образа больше размера целевого устройства",
+   "Образ для прошивки: '%s'",
+   "Установка заняла %d сек.",
++  "Раздел recovery защищён от записи на время установки",
++  "Zip изменил раздел recovery; прежний recovery восстановлен",
++  "Не удалось защитить или восстановить раздел recovery!",
+   "Установка рекавери в ramdisk",
+   "Установка ZIP-файла '%s'",
+   "Внутренняя память",
+diff --git a/gui2/i18n/zh_cn.cpp b/gui2/i18n/zh_cn.cpp
+index 1ba3901..a6f3538 100644
+--- a/gui2/i18n/zh_cn.cpp
++++ b/gui2/i18n/zh_cn.cpp
+@@ -379,6 +379,7 @@ extern const language_pack kSimplifiedChinese = {
+   "安装刷机包前卸载 System",
+   "自动禁用 AVB2.0",
+   "刷入 ROM 后自动重刷 YARP",
++  "安装 zip 时保护 recovery 分区",
+   "用 rm -rf 代替格式化",
+   "备份前不检查剩余空间",
+   "备份时不生成摘要",
+@@ -530,6 +531,9 @@ extern const language_pack kSimplifiedChinese = {
+   "镜像大小大于目标设备",
+   "刷入镜像:“%s”",
+   "安装耗时 %d 秒。",
++  "本次安装期间 recovery 分区已写保护",
++  "zip 修改了 recovery 分区，已恢复原来的 recovery",
++  "无法保护或恢复 recovery 分区！",
+   "安装 Recovery Ramdisk",
+   "正在安装 Zip 刷机包“%s”",
+   "内部存储空间",
+diff --git a/gui2/i18n/zh_tw.cpp b/gui2/i18n/zh_tw.cpp
+index 790c338..63eac5b 100644
+--- a/gui2/i18n/zh_tw.cpp
++++ b/gui2/i18n/zh_tw.cpp
+@@ -379,6 +379,7 @@ extern const language_pack kTraditionalChinese = {
+   "安裝刷機包前卸載 System",
+   "自動停用 AVB2.0",
+   "刷入 ROM 後自動重刷 YARP",
++  "安裝 zip 時保護 recovery 分割區",
+   "用 rm -rf 代替格式化",
+   "備份前不檢查剩餘空間",
+   "備份時不產生摘要",
+@@ -530,6 +531,9 @@ extern const language_pack kTraditionalChinese = {
+   "映像大小大於目標裝置",
+   "刷入映像:“%s”",
+   "安裝耗時 %d 秒。",
++  "本次安裝期間 recovery 分割區已防寫",
++  "zip 修改了 recovery 分割區，已還原原本的 recovery",
++  "無法保護或還原 recovery 分割區！",
+   "安裝 Recovery Ramdisk",
+   "正在安裝 Zip 刷機包“%s”",
+   "內建儲存空間",
+diff --git a/twrpinstall/twinstall.cpp b/twrpinstall/twinstall.cpp
+index 2763db4..c624784 100755
+--- a/twrpinstall/twinstall.cpp
++++ b/twrpinstall/twinstall.cpp
+@@ -36,7 +36,10 @@
+ #include <cutils/properties.h>
+ 
+ #include <android-base/properties.h>
++#include <android-base/file.h>
+ #include <android-base/unique_fd.h>
++#include <linux/fs.h>
++#include <sys/ioctl.h>
+ 
+ #include "twcommon.h"
+ 
+@@ -62,6 +65,98 @@ enum zip_type {
+ 	AB_OTA_ZIP_TYPE
+ };
+ 
++// Keeps zips from replacing this recovery on devices with a dedicated recovery
++// partition. LineageOS OTAs, for example, end with
++// package_extract_file("recovery.img", ".../by-name/recovery").
++//  1. The partition's block device is set read-only (BLKROSET) while the
++//     update binary runs, so every write path to it fails: edify, dd in a
++//     shell script, by-name symlinks or the raw sdXN node.
++//  2. Its contents are snapshotted beforehand and compared afterwards; if it
++//     still changed (e.g. a script cleared the read-only flag), the snapshot
++//     is written back.
++// Controlled by tw_protect_recovery (on by default).
++class RecoveryWriteGuard {
++public:
++	RecoveryWriteGuard() {
++		if (!DataManager::GetIntValue(TW_PROTECT_RECOVERY_VAR)) return;
++		TWPartition* part = PartitionManager.FindPartitionByPath("/recovery");
++		if (part == nullptr || part->actual_block_device_.empty()) return;
++		char resolved[PATH_MAX];
++		if (realpath(part->actual_block_device_.c_str(), resolved) == nullptr) {
++			LOGINFO("Recovery guard: cannot resolve '%s'\n", part->actual_block_device_.c_str());
++			gui2_console::log_error("protect_recovery_failed");
++			return;
++		}
++		device_ = resolved;
++		if (!ReadAll(&snapshot_) || !SetReadOnly(true)) {
++			snapshot_.clear();
++			gui2_console::log_error("protect_recovery_failed");
++			return;
++		}
++		active_ = true;
++		LOGINFO("Recovery guard: %s read-only, %zu bytes saved\n", device_.c_str(), snapshot_.size());
++		gui2_console::highlight("protect_recovery_active");
++	}
++	~RecoveryWriteGuard() { Finish(); }
++
++	void Finish() {
++		if (!active_) return;
++		active_ = false;
++		if (!SetReadOnly(false)) LOGINFO("Recovery guard: failed to clear read-only on %s\n", device_.c_str());
++		if (Matches()) {
++			LOGINFO("Recovery guard: recovery partition unchanged\n");
++		} else if (WriteAll() && Matches()) {
++			gui2_console::warning("protect_recovery_restored");
++		} else {
++			gui2_console::log_error("protect_recovery_failed");
++		}
++		std::string().swap(snapshot_);
++	}
++
++private:
++	bool SetReadOnly(bool read_only) {
++		android::base::unique_fd fd(open(device_.c_str(), O_RDONLY | O_CLOEXEC));
++		int value = read_only ? 1 : 0;
++		if (fd < 0 || ioctl(fd.get(), BLKROSET, &value) != 0) {
++			LOGINFO("Recovery guard: BLKROSET(%d) on %s failed: %s\n", value, device_.c_str(), strerror(errno));
++			return false;
++		}
++		return true;
++	}
++
++	bool ReadAll(std::string* out) {
++		android::base::unique_fd fd(open(device_.c_str(), O_RDONLY | O_CLOEXEC));
++		uint64_t size = 0;
++		if (fd < 0 || ioctl(fd.get(), BLKGETSIZE64, &size) != 0 || size == 0) return false;
++		out->resize(size);
++		return android::base::ReadFully(fd.get(), out->data(), size);
++	}
++
++	// Chunked compare so the check does not need a second full-size buffer.
++	bool Matches() {
++		android::base::unique_fd fd(open(device_.c_str(), O_RDONLY | O_CLOEXEC));
++		if (fd < 0) return false;
++		std::vector<char> chunk(1 << 20);
++		for (size_t offset = 0; offset < snapshot_.size(); offset += chunk.size()) {
++			const size_t len = std::min(chunk.size(), snapshot_.size() - offset);
++			if (!android::base::ReadFully(fd.get(), chunk.data(), len)) return false;
++			if (memcmp(chunk.data(), snapshot_.data() + offset, len) != 0) return false;
++		}
++		return true;
++	}
++
++	bool WriteAll() {
++		android::base::unique_fd fd(open(device_.c_str(), O_WRONLY | O_CLOEXEC));
++		if (fd < 0) return false;
++		return android::base::WriteFully(fd.get(), snapshot_.data(), snapshot_.size()) &&
++		       fsync(fd.get()) == 0;
++	}
++
++	std::string device_;
++	std::string snapshot_;
++	bool active_ = false;
++};
++
+ static int Prepare_Update_Binary(ZipArchiveHandle Zip) {
+ 	char arches[PATH_MAX];
+ 	property_get("ro.product.cpu.abilist", arches, "error");
+@@ -282,6 +377,7 @@ int TWinstall_zip(const char* path, int* wipe_cache, bool check_for_digest) {
+ 		mkdir("/system", 0755);
+ 	}
+ 
++	RecoveryWriteGuard recovery_guard;
+ 	time_t start, stop;
+ 	time(&start);
+ 
+@@ -340,6 +436,7 @@ int TWinstall_zip(const char* path, int* wipe_cache, bool check_for_digest) {
+ 			ret_val = INSTALL_CORRUPT;
+ 		}
+ 	}
++	recovery_guard.Finish();
+ 	time(&stop);
+ 	int total_time = (int) difftime(stop, start);
+ 	if (ret_val == INSTALL_CORRUPT) {
+diff --git a/variables.h b/variables.h
+index e95e017..e49e024 100755
+--- a/variables.h
++++ b/variables.h
+@@ -154,6 +154,7 @@
+ #define TW_IS_SUPER                 "tw_is_super"
+ #define TW_VIRTUAL_AB_ENABLED       "tw_virtual_ab.enabled"
+ #define TW_AUTO_REFLASHTWRP_VAR     "tw_auto_reflashtwrp"
++#define TW_PROTECT_RECOVERY_VAR     "tw_protect_recovery"
+ 
+ // BUILD PROPS
+ #define TW_FASTBOOT_MODE_PROP         "ro.twrp.fastbootd"
+-- 
+2.56.0
+

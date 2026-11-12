@@ -21,6 +21,7 @@ Tested on M2007J3SG with LineageOS 24.0, FBE plus metadata encryption, hardware-
 | Battery level, using AOSP's health HAL built from source | ✅ |
 | Status bar on the right, clear of the top-left punch hole | ✅ |
 | Installing LineageOS zips, with `addon.d` backup/restore | ✅ (lineage-24.0-20261107 nightly; see below) |
+| Zips cannot overwrite TWRP (recovery partition write guard) | ✅ |
 | Pattern / password credentials | same code path as PIN, not tested on device |
 | ROMs that run the SPU (`spdaemon`, e.g. possibly stock MIUI) | untested |
 | ROM security-patch update (2026-10 → 2026-11) without rebuilding recovery | ✅ |
@@ -43,15 +44,22 @@ fastboot reboot recovery
 
 ### Keeping TWRP when you update LineageOS
 
-LineageOS zips for apollo **always flash their own `recovery.img`** in the last step of the
-updater script. To keep TWRP, either flash TWRP again right after the update, or strip that
-step from the zip first. Everything else stays byte-identical:
+LineageOS zips for apollo **always flash their own `recovery.img`** as the last step of the
+updater script. This build blocks that inside TWRP itself, with **Settings → General → "Protect
+recovery partition during zip install"**, which is on by default:
 
-```bash
-python3 tools/strip_recovery_from_ota.py lineage-...-signed.zip lineage-...-keep-recovery.zip
-```
+- Before a zip runs, TWRP snapshots the recovery partition and makes its block device read-only
+  (`BLKROSET`). Every write path fails: edify `package_extract_file`, `dd` from scripts,
+  `/dev/block/by-name/recovery` or the raw `sdXN` node. LineageOS's updater ignores that step's
+  result, so the rest of the update installs normally.
+- Afterwards TWRP clears the flag and compares the partition with the snapshot. If a zip changed
+  it anyway, for example by clearing the read-only flag itself, the snapshot is written back and
+  the install log says so.
 
-Zip signature verification has to be off, which is TWRP's default. With
+Turn the setting off when you *do* want a zip to install a recovery. Flashing an image from
+TWRP's image-flash screen, or with `fastboot flash recovery`, is not affected.
+
+`tools/strip_recovery_from_ota.py` still works if you'd rather keep the step out of the zip. With
 `persist.vendor.recovery_update=false`, the default under Developer options → "Update recovery",
 the ROM never rewrites recovery when Android boots.
 
@@ -102,6 +110,7 @@ mka recoveryimage
 
 - `bootable_recovery/0001`: mount erofs read-only. A read-write mount fails with EACCES, so vendor and odm never mounted.
 - `bootable_recovery/0002`: `ro.twrp.gui2.status_right=true` moves the clock to the right side of the status bar.
+- `bootable_recovery/0003`: recovery partition write guard during zip installs. Adds the `tw_protect_recovery` setting, on by default, translated for en, ru, zh_CN and zh_TW.
 - `system_vold/0001`: honor `ro.crypto.dm_default_key.options_format.version` like AOSP and LineageOS do,
   and log the default-key key sizes. No key material is logged.
 
