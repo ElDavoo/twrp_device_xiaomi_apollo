@@ -31,7 +31,7 @@ Tested on M2007J3SG with LineageOS 24.0, FBE plus metadata encryption, hardware-
 | Status bar on the right, clear of the top-left punch hole | ✅ |
 | Installing LineageOS zips, with `addon.d` backup/restore | ✅ (lineage-24.0-20261107 nightly; see below) |
 | Zips cannot overwrite YARP (recovery partition write guard) | ✅ |
-| Zips cannot overwrite the boot partition / kernel (boot write guard, r3) | built, not yet tested on device |
+| Zips cannot overwrite the boot partition / kernel (boot write guard, r3) | ✅ |
 | Pattern / password credentials | same code path as PIN, not tested on device |
 | ROMs that run the SPU (`spdaemon`, e.g. possibly stock MIUI) | untested |
 | ROM security-patch update (2026-10 → 2026-11) without rebuilding recovery | ✅ |
