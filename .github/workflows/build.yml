@@ -1,0 +1,176 @@
+name: Build YARP recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Publish a release with this tag (leave empty to only build)"
+        required: false
+        default: ""
+      lineage_zip_url:
+        description: "LineageOS apollon OTA to take vendor blobs from (empty = latest nightly)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  MANIFEST_URL: https://github.com/TWRP-Test/platform_manifest_twrp_aosp.git
+  MANIFEST_BRANCH: twrp-16.0
+  LUNCH_TARGET: twrp_apollo-bp2a-eng
+  CCACHE_DIR: /home/runner/.ccache
+  CCACHE_MAXSIZE: 8G
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Free disk space and merge disks
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: 20480
+          swap-size-mb: 16384
+          remove-dotnet: "true"
+          remove-android: "true"
+          remove-haskell: "true"
+          remove-codeql: "true"
+          remove-docker-images: "true"
+
+      - name: Check out device tree
+        uses: actions/checkout@v4
+        with:
+          path: src/device/xiaomi/apollo
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            bc bison build-essential ccache curl flex fontconfig git gnupg gperf \
+            libc6-dev-i386 libgl1-mesa-dev libx11-dev libxml2-utils lib32z1-dev \
+            python3 rsync unzip xsltproc zip zlib1g-dev brotli erofs-utils
+          mkdir -p ~/bin
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o ~/bin/repo
+          chmod +x ~/bin/repo
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@users.noreply.github.com"
+          df -h / "$GITHUB_WORKSPACE"
+
+      - name: Pick LineageOS OTA for vendor blobs
+        id: ota
+        run: |
+          if [ -n "${{ inputs.lineage_zip_url }}" ]; then
+            url="${{ inputs.lineage_zip_url }}"; sha=""
+          else
+            read -r url sha < <(curl -fsSL https://download.lineageos.org/api/v2/devices/apollon/builds |
+              python3 -c 'import json,sys; f=json.load(sys.stdin)[0]["files"][0]; print(f["url"], f["sha256"])')
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$url")" >> "$GITHUB_OUTPUT"
+          echo "Vendor blobs from: $url"
+
+      - name: Restore vendor blobs cache
+        id: blobs-cache
+        uses: actions/cache@v4
+        with:
+          path: src/device/xiaomi/apollo/recovery/root/vendor
+          key: blobs-${{ steps.ota.outputs.name }}-${{ hashFiles('src/device/xiaomi/apollo/tools/extract_blobs.sh') }}
+
+      - name: Extract vendor blobs from the OTA
+        if: steps.blobs-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/ota"
+          curl -fL --retry 3 -o "$RUNNER_TEMP/ota/rom.zip" "${{ steps.ota.outputs.url }}"
+          if [ -n "${{ steps.ota.outputs.sha256 }}" ]; then
+            echo "${{ steps.ota.outputs.sha256 }}  $RUNNER_TEMP/ota/rom.zip" | sha256sum -c -
+          fi
+          src/device/xiaomi/apollo/tools/blobs_from_ota.sh "$RUNNER_TEMP/ota/rom.zip" "$RUNNER_TEMP/ota/work"
+          rm -rf "$RUNNER_TEMP/ota"
+
+      - name: Sync YARP sources
+        working-directory: src
+        run: |
+          repo init -u "$MANIFEST_URL" -b "$MANIFEST_BRANCH" --depth=1 --no-clone-bundle
+          repo sync -c --no-tags --no-clone-bundle --optimized-fetch -j"$(nproc --all)" ||
+            repo sync -c --no-tags --no-clone-bundle -j4
+          repo manifest -r -o "$GITHUB_WORKSPACE/manifest-pinned.xml"
+          df -h .
+
+      - name: Apply source patches
+        working-directory: src
+        run: |
+          git -C bootable/recovery am "$PWD"/device/xiaomi/apollo/patches/bootable_recovery/*.patch
+          git -C system/vold      am "$PWD"/device/xiaomi/apollo/patches/system_vold/*.patch
+          git -C bootable/recovery log --oneline -6
+          # The build does not need git history; free the space.
+          rm -rf .repo
+          df -h .
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ env.LUNCH_TARGET }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ccache-${{ env.LUNCH_TARGET }}-
+
+      - name: Build recovery image
+        id: build
+        working-directory: src
+        run: |
+          ccache -z
+          export USE_CCACHE=1 CCACHE_EXEC=/usr/bin/ccache CC_WRAPPER=/usr/bin/ccache CXX_WRAPPER=/usr/bin/ccache
+          export CCACHE_COMPILERCHECK=content CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_SLOPPINESS=time_macros,file_macro,include_file_mtime,include_file_ctime
+          export ALLOW_MISSING_DEPENDENCIES=true
+          set +e
+          # Leave time to save the ccache if the build runs long; a re-run then continues from it.
+          timeout --signal=INT 270m bash -c 'source build/envsetup.sh && lunch "$LUNCH_TARGET" && mka recoveryimage'
+          rc=$?
+          set -e
+          ccache -s
+          df -h .
+          exit $rc
+
+      - name: Save ccache
+        if: always() && steps.build.outcome != 'skipped'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ env.LUNCH_TARGET }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Collect image
+        id: img
+        run: |
+          img=src/out/target/product/apollo/recovery.img
+          test -s "$img"
+          name="yarp-${{ inputs.release_tag || format('ci-{0}', github.run_number) }}.img"
+          mkdir -p dist
+          cp "$img" "dist/$name"
+          (cd dist && sha256sum "$name" > "$name.sha256" && cat "$name.sha256")
+          cp manifest-pinned.xml dist/
+          echo "Vendor blobs from ${{ steps.ota.outputs.name }}" > dist/blobs-source.txt
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.img.outputs.name }}
+          path: dist/
+          retention-days: 30
+
+      - name: Publish release
+        if: inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ inputs.release_tag }}"
+          notes="device/xiaomi/apollo/release-notes/$tag.md"
+          if [ -f "src/$notes" ]; then notes_arg=(-F "src/$notes"); else notes_arg=(--generate-notes); fi
+          gh release create "$tag" --target "$GITHUB_SHA" --title "YARP 3.7.1_16-0 for apollo — $tag" \
+            "${notes_arg[@]}" "dist/${{ steps.img.outputs.name }}" "dist/${{ steps.img.outputs.name }}.sha256"

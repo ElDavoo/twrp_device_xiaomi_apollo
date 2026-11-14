@@ -10,14 +10,31 @@
 # (qseecomd-maps.txt / keymaster-maps.txt), plus libs found via static
 # DT_NEEDED scanning.
 #
-# Run with /vendor mounted (ROM with adb root, or recovery).
+# Run with /vendor mounted (ROM with adb root, or recovery), or pass
+# --from-dir <dir> with an extracted vendor partition (see blobs_from_ota.sh).
 
 set -euo pipefail
 
 DEST="$(dirname "$0")/../recovery/root/vendor"
+SRC_DIR=""
+if [ "${1:-}" = "--from-dir" ]; then
+    SRC_DIR="$(realpath "$2")"
+fi
 
 pull() { # pull <device-path> <dest-subdir>
     local src="$1" dir="$DEST/$2"
+    if [ -n "$SRC_DIR" ]; then
+        local file="$SRC_DIR/${src#/vendor/}"
+        if [ -e "$file" ]; then
+            mkdir -p "$dir"
+            cp -L "$file" "$dir/"
+            echo "copied $src"
+        else
+            echo "MISSING in vendor image: $src" >&2
+            exit 1
+        fi
+        return
+    fi
     if adb shell "[ -e '$src' ]" >/dev/null 2>&1; then
         mkdir -p "$dir"
         adb pull "$src" "$dir/" >/dev/null
@@ -68,6 +85,7 @@ libqisl.so
 librpmb.so
 libsecureui.so
 libsecureui_svcsock.so
+libspcom.so
 libssd.so
 libStDrvInt.so
 libtime_genoff.so

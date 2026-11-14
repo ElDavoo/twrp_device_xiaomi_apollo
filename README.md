@@ -107,8 +107,10 @@ repo sync -c --no-tags
 git clone https://github.com/ElDavoo/twrp_device_xiaomi_apollo device/xiaomi/apollo
 
 # proprietary keymaster/gatekeeper/qseecom blobs are not tracked: pull them from a
-# phone running the ROM (or from YARP with /vendor mounted)
+# phone running the ROM (or from YARP with /vendor mounted)...
 device/xiaomi/apollo/tools/extract_blobs.sh
+# ...or extract them from a LineageOS apollon OTA zip (needs brotli and erofs-utils)
+device/xiaomi/apollo/tools/blobs_from_ota.sh lineage-*-apollon-signed.zip
 
 # source patches (see patches/)
 git -C bootable/recovery am "$PWD"/device/xiaomi/apollo/patches/bootable_recovery/*.patch
@@ -119,6 +121,14 @@ source build/envsetup.sh
 lunch twrp_apollo-bp2a-eng
 mka recoveryimage
 ```
+
+### GitHub Actions
+
+`.github/workflows/build.yml` builds the image on GitHub (Actions → Build YARP recovery → Run workflow).
+It syncs YARP, applies `patches/`, takes the vendor blobs from the latest LineageOS apollon nightly
+(or the OTA URL you give it), and uploads `recovery.img` as an artifact. ccache is kept in the
+Actions cache, so later builds are much faster. If a cold build hits the time limit, run it again
+and it continues from the saved ccache. Set `release_tag` to publish a release with the image.
 
 ### Patches
 

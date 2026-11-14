@@ -245,7 +245,7 @@ index c624784..055c7d6 100755
 +		if (!SetReadOnly(false)) LOGINFO("Write guard: failed to clear read-only on %s\n", device_.c_str());
  		if (Matches()) {
 -			LOGINFO("Recovery guard: recovery partition unchanged\n");
-+			LOGINFO("Write guard: recovery partition unchanged\n");
++			LOGINFO("Write guard: %s unchanged\n", device_.c_str());
  		} else if (WriteAll() && Matches()) {
 -			gui2_console::warning("protect_recovery_restored");
 +			gui2_console::warning(Msg("_restored"));
