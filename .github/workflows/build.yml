@@ -34,7 +34,7 @@ jobs:
       - name: Free disk space and merge disks
         uses: easimon/maximize-build-space@v10
         with:
-          root-reserve-mb: 20480
+          root-reserve-mb: 32768
           swap-size-mb: 16384
           remove-dotnet: "true"
           remove-android: "true"
@@ -86,13 +86,16 @@ jobs:
       - name: Extract vendor blobs from the OTA
         if: steps.blobs-cache.outputs.cache-hit != 'true'
         run: |
-          mkdir -p "$RUNNER_TEMP/ota"
-          curl -fL --retry 3 -o "$RUNNER_TEMP/ota/rom.zip" "${{ steps.ota.outputs.url }}"
+          # Work on the big build volume; the root disk only keeps ccache and swap.
+          ota="$GITHUB_WORKSPACE/ota-tmp"
+          mkdir -p "$ota"
+          curl -fL --retry 3 -o "$ota/rom.zip" "${{ steps.ota.outputs.url }}"
           if [ -n "${{ steps.ota.outputs.sha256 }}" ]; then
-            echo "${{ steps.ota.outputs.sha256 }}  $RUNNER_TEMP/ota/rom.zip" | sha256sum -c -
+            echo "${{ steps.ota.outputs.sha256 }}  $ota/rom.zip" | sha256sum -c -
           fi
-          src/device/xiaomi/apollo/tools/blobs_from_ota.sh "$RUNNER_TEMP/ota/rom.zip" "$RUNNER_TEMP/ota/work"
-          rm -rf "$RUNNER_TEMP/ota"
+          src/device/xiaomi/apollo/tools/blobs_from_ota.sh "$ota/rom.zip" "$ota/work"
+          rm -rf "$ota"
+          df -h / .
 
       - name: Sync YARP sources
         working-directory: src
