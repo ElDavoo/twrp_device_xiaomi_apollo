@@ -1,0 +1,315 @@
+From 826b227cef3c39873ac114deeda30c0d511106e5 Mon Sep 17 00:00:00 2001
+From: "Davide Palma (ElDavo)" <github@davidepalma.it>
+Date: Sat, 14 Nov 2026 10:57:10 +0100
+Subject: [PATCH] install: also protect the boot partition during zip installs
+
+Generalize the recovery write guard to PartitionWriteGuard and use it for
+/boot too (kernel / KernelSU boot image). New setting tw_protect_boot,
+default on, shown where the boot partition exists.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Wa3ghNiH9YWmrNGXcPt1iR
+---
+ data.cpp                  |  1 +
+ gui2/gui2.cpp             |  4 ++++
+ gui2/i18n/en.cpp          |  4 ++++
+ gui2/i18n/i18n.cpp        |  3 +++
+ gui2/i18n/i18n.h          |  4 ++++
+ gui2/i18n/ru.cpp          |  4 ++++
+ gui2/i18n/zh_cn.cpp       |  4 ++++
+ gui2/i18n/zh_tw.cpp       |  4 ++++
+ twrpinstall/twinstall.cpp | 50 ++++++++++++++++++++++++---------------
+ variables.h               |  1 +
+ 10 files changed, 60 insertions(+), 19 deletions(-)
+
+diff --git a/data.cpp b/data.cpp
+index d677bf5..7055b55 100644
+--- a/data.cpp
++++ b/data.cpp
+@@ -635,6 +635,7 @@ void DataManager::SetDefaultValues() {
+   persist_[TW_TIME_ZONE_GUIDST] = false;
+   persist_[TW_AUTO_REFLASHTWRP_VAR] = false;
+   persist_[TW_PROTECT_RECOVERY_VAR] = true;
++  persist_[TW_PROTECT_BOOT_VAR] = true;
+ 
+ #ifdef TW_NO_FLASH_CURRENT_TWRP
+   consts_["tw_no_flash_current_twrp"] = true;
+diff --git a/gui2/gui2.cpp b/gui2/gui2.cpp
+index 6a9863e..0019edb 100644
+--- a/gui2/gui2.cpp
++++ b/gui2/gui2.cpp
+@@ -1559,6 +1559,8 @@ static void rebuild_general_settings_items(void) {
+     add(nullptr, text.general_reflash_twrp, "tw_auto_reflashtwrp");
+   if (flag("tw_has_recovery_partition", 0) != 0)
+     add(nullptr, text.general_protect_recovery, "tw_protect_recovery");
++  if (flag("tw_has_boot_partition", 0) != 0)
++    add(nullptr, text.general_protect_boot, "tw_protect_boot");
+ 
+   add(text.general_group_wipe_backup, text.general_rm_rf, "tw_rm_rf");
+   add(nullptr, text.general_disable_free_space, "tw_disable_free_space");
+@@ -2912,6 +2914,8 @@ static void rebuild_install_options(void) {
+     add(text.general_reflash_twrp, "tw_auto_reflashtwrp", flag("tw_auto_reflashtwrp", 0) != 0);
+   if (flag("tw_has_recovery_partition", 0) != 0)
+     add(text.general_protect_recovery, "tw_protect_recovery", flag("tw_protect_recovery", 1) != 0);
++  if (flag("tw_has_boot_partition", 0) != 0)
++    add(text.general_protect_boot, "tw_protect_boot", flag("tw_protect_boot", 1) != 0);
+   add(text.general_install_reboot, "tw_install_reboot", flag("tw_install_reboot", 0) != 0);
+ }
+ 
+diff --git a/gui2/i18n/en.cpp b/gui2/i18n/en.cpp
+index 117cdf1..53935d7 100644
+--- a/gui2/i18n/en.cpp
++++ b/gui2/i18n/en.cpp
+@@ -380,6 +380,7 @@ extern const language_pack kEnglish = {
+   "Automatically disable AVB2.0",
+   "Reflash YARP after flashing a ROM",
+   "Protect recovery partition during zip install",
++  "Protect boot partition (kernel) during zip install",
+   "Use rm -rf instead of formatting",
+   "Skip free space check before backup",
+   "Skip digest generation during backup",
+@@ -536,6 +537,9 @@ extern const language_pack kEnglish = {
+   "Recovery partition is write-protected during this install",
+   "The zip changed the recovery partition; the previous recovery was restored",
+   "Unable to protect or restore the recovery partition!",
++  "Boot partition is write-protected during this install",
++  "The zip changed the boot partition; the previous boot image was restored",
++  "Unable to protect or restore the boot partition!",
+   "Install Recovery Ramdisk",
+   "Installing zip file '%s'",
+   "Internal Storage",
+diff --git a/gui2/i18n/i18n.cpp b/gui2/i18n/i18n.cpp
+index 4aaf227..e728e03 100644
+--- a/gui2/i18n/i18n.cpp
++++ b/gui2/i18n/i18n.cpp
+@@ -148,6 +148,9 @@ constexpr message_binding bindings[] = {
+     {"partitions", &language_pack::partitions},
+     {"pid_error", &language_pack::pid_error},
+     {"pid_signal", &language_pack::pid_signal},
++    {"protect_boot_active", &language_pack::protect_boot_active},
++    {"protect_boot_failed", &language_pack::protect_boot_failed},
++    {"protect_boot_restored", &language_pack::protect_boot_restored},
+     {"protect_recovery_active", &language_pack::protect_recovery_active},
+     {"protect_recovery_failed", &language_pack::protect_recovery_failed},
+     {"protect_recovery_restored", &language_pack::protect_recovery_restored},
+diff --git a/gui2/i18n/i18n.h b/gui2/i18n/i18n.h
+index d48e72f..7d719fd 100644
+--- a/gui2/i18n/i18n.h
++++ b/gui2/i18n/i18n.h
+@@ -408,6 +408,7 @@ struct language_pack {
+   const char* general_disable_avb2;
+   const char* general_reflash_twrp;
+   const char* general_protect_recovery;
++  const char* general_protect_boot;
+   const char* general_rm_rf;
+   const char* general_disable_free_space;
+   const char* general_skip_digest_generate;
+@@ -531,6 +532,9 @@ struct language_pack {
+   const char* protect_recovery_active;
+   const char* protect_recovery_restored;
+   const char* protect_recovery_failed;
++  const char* protect_boot_active;
++  const char* protect_boot_restored;
++  const char* protect_boot_failed;
+   const char* install_twrp_ramdisk;
+   const char* installing_zip;
+   const char* internal;
+diff --git a/gui2/i18n/ru.cpp b/gui2/i18n/ru.cpp
+index 23810b6..e30aecc 100644
+--- a/gui2/i18n/ru.cpp
++++ b/gui2/i18n/ru.cpp
+@@ -380,6 +380,7 @@ extern const language_pack kRussian = {
+   "Автоматически отключать AVB2.0",
+   "Перепрошить YARP после прошивки ROM",
+   "Защищать раздел recovery при установке zip",
++  "Защищать раздел boot (ядро) при установке zip",
+   "Использовать rm -rf вместо форматирования",
+   "Пропустить проверку свободного места перед резервным копированием",
+   "Пропустить генерацию контрольной суммы во время резервного копирования",
+@@ -536,6 +537,9 @@ extern const language_pack kRussian = {
+   "Раздел recovery защищён от записи на время установки",
+   "Zip изменил раздел recovery; прежний recovery восстановлен",
+   "Не удалось защитить или восстановить раздел recovery!",
++  "Раздел boot защищён от записи на время установки",
++  "Zip изменил раздел boot; прежний образ boot восстановлен",
++  "Не удалось защитить или восстановить раздел boot!",
+   "Установка рекавери в ramdisk",
+   "Установка ZIP-файла '%s'",
+   "Внутренняя память",
+diff --git a/gui2/i18n/zh_cn.cpp b/gui2/i18n/zh_cn.cpp
+index a6f3538..d1dda71 100644
+--- a/gui2/i18n/zh_cn.cpp
++++ b/gui2/i18n/zh_cn.cpp
+@@ -380,6 +380,7 @@ extern const language_pack kSimplifiedChinese = {
+   "自动禁用 AVB2.0",
+   "刷入 ROM 后自动重刷 YARP",
+   "安装 zip 时保护 recovery 分区",
++  "安装 zip 时保护 boot 分区（内核）",
+   "用 rm -rf 代替格式化",
+   "备份前不检查剩余空间",
+   "备份时不生成摘要",
+@@ -534,6 +535,9 @@ extern const language_pack kSimplifiedChinese = {
+   "本次安装期间 recovery 分区已写保护",
+   "zip 修改了 recovery 分区，已恢复原来的 recovery",
+   "无法保护或恢复 recovery 分区！",
++  "本次安装期间 boot 分区已写保护",
++  "zip 修改了 boot 分区，已恢复原来的 boot 镜像",
++  "无法保护或恢复 boot 分区！",
+   "安装 Recovery Ramdisk",
+   "正在安装 Zip 刷机包“%s”",
+   "内部存储空间",
+diff --git a/gui2/i18n/zh_tw.cpp b/gui2/i18n/zh_tw.cpp
+index 63eac5b..b2aab2c 100644
+--- a/gui2/i18n/zh_tw.cpp
++++ b/gui2/i18n/zh_tw.cpp
+@@ -380,6 +380,7 @@ extern const language_pack kTraditionalChinese = {
+   "自動停用 AVB2.0",
+   "刷入 ROM 後自動重刷 YARP",
+   "安裝 zip 時保護 recovery 分割區",
++  "安裝 zip 時保護 boot 分割區（核心）",
+   "用 rm -rf 代替格式化",
+   "備份前不檢查剩餘空間",
+   "備份時不產生摘要",
+@@ -534,6 +535,9 @@ extern const language_pack kTraditionalChinese = {
+   "本次安裝期間 recovery 分割區已防寫",
+   "zip 修改了 recovery 分割區，已還原原本的 recovery",
+   "無法保護或還原 recovery 分割區！",
++  "本次安裝期間 boot 分割區已防寫",
++  "zip 修改了 boot 分割區，已還原原本的 boot 映像",
++  "無法保護或還原 boot 分割區！",
+   "安裝 Recovery Ramdisk",
+   "正在安裝 Zip 刷機包“%s”",
+   "內建儲存空間",
+diff --git a/twrpinstall/twinstall.cpp b/twrpinstall/twinstall.cpp
+index c624784..055c7d6 100755
+--- a/twrpinstall/twinstall.cpp
++++ b/twrpinstall/twinstall.cpp
+@@ -65,8 +65,8 @@ enum zip_type {
+ 	AB_OTA_ZIP_TYPE
+ };
+ 
+-// Keeps zips from replacing this recovery on devices with a dedicated recovery
+-// partition. LineageOS OTAs, for example, end with
++// Keeps zips from replacing this recovery (or the boot image/kernel) on devices
++// with dedicated recovery/boot partitions. LineageOS OTAs, for example, end with
+ // package_extract_file("recovery.img", ".../by-name/recovery").
+ //  1. The partition's block device is set read-only (BLKROSET) while the
+ //     update binary runs, so every write path to it fails: edify, dd in a
+@@ -74,51 +74,59 @@ enum zip_type {
+ //  2. Its contents are snapshotted beforehand and compared afterwards; if it
+ //     still changed (e.g. a script cleared the read-only flag), the snapshot
+ //     is written back.
+-// Controlled by tw_protect_recovery (on by default).
+-class RecoveryWriteGuard {
++// Controlled by tw_protect_recovery and tw_protect_boot (both on by default).
++class PartitionWriteGuard {
+ public:
+-	RecoveryWriteGuard() {
+-		if (!DataManager::GetIntValue(TW_PROTECT_RECOVERY_VAR)) return;
+-		TWPartition* part = PartitionManager.FindPartitionByPath("/recovery");
++	// path: mount point of the partition, var: setting that enables the guard,
++	// msg: prefix of the console messages ("protect_recovery" or "protect_boot").
++	PartitionWriteGuard(const char* path, const char* var, const char* msg)
++		: msg_(msg) {
++		if (!DataManager::GetIntValue(var)) return;
++		TWPartition* part = PartitionManager.FindPartitionByPath(path);
+ 		if (part == nullptr || part->actual_block_device_.empty()) return;
+ 		char resolved[PATH_MAX];
+ 		if (realpath(part->actual_block_device_.c_str(), resolved) == nullptr) {
+-			LOGINFO("Recovery guard: cannot resolve '%s'\n", part->actual_block_device_.c_str());
+-			gui2_console::log_error("protect_recovery_failed");
++			LOGINFO("Write guard: cannot resolve '%s'\n", part->actual_block_device_.c_str());
++			gui2_console::log_error(Msg("_failed"));
+ 			return;
+ 		}
+ 		device_ = resolved;
+ 		if (!ReadAll(&snapshot_) || !SetReadOnly(true)) {
+ 			snapshot_.clear();
+-			gui2_console::log_error("protect_recovery_failed");
++			gui2_console::log_error(Msg("_failed"));
+ 			return;
+ 		}
+ 		active_ = true;
+-		LOGINFO("Recovery guard: %s read-only, %zu bytes saved\n", device_.c_str(), snapshot_.size());
+-		gui2_console::highlight("protect_recovery_active");
++		LOGINFO("Write guard: %s read-only, %zu bytes saved\n", device_.c_str(), snapshot_.size());
++		gui2_console::highlight(Msg("_active"));
+ 	}
+-	~RecoveryWriteGuard() { Finish(); }
++	~PartitionWriteGuard() { Finish(); }
+ 
+ 	void Finish() {
+ 		if (!active_) return;
+ 		active_ = false;
+-		if (!SetReadOnly(false)) LOGINFO("Recovery guard: failed to clear read-only on %s\n", device_.c_str());
++		if (!SetReadOnly(false)) LOGINFO("Write guard: failed to clear read-only on %s\n", device_.c_str());
+ 		if (Matches()) {
+-			LOGINFO("Recovery guard: recovery partition unchanged\n");
++			LOGINFO("Write guard: recovery partition unchanged\n");
+ 		} else if (WriteAll() && Matches()) {
+-			gui2_console::warning("protect_recovery_restored");
++			gui2_console::warning(Msg("_restored"));
+ 		} else {
+-			gui2_console::log_error("protect_recovery_failed");
++			gui2_console::log_error(Msg("_failed"));
+ 		}
+ 		std::string().swap(snapshot_);
+ 	}
+ 
+ private:
++	const char* Msg(const char* suffix) {
++		msg_key_ = std::string(msg_) + suffix;
++		return msg_key_.c_str();
++	}
++
+ 	bool SetReadOnly(bool read_only) {
+ 		android::base::unique_fd fd(open(device_.c_str(), O_RDONLY | O_CLOEXEC));
+ 		int value = read_only ? 1 : 0;
+ 		if (fd < 0 || ioctl(fd.get(), BLKROSET, &value) != 0) {
+-			LOGINFO("Recovery guard: BLKROSET(%d) on %s failed: %s\n", value, device_.c_str(), strerror(errno));
++			LOGINFO("Write guard: BLKROSET(%d) on %s failed: %s\n", value, device_.c_str(), strerror(errno));
+ 			return false;
+ 		}
+ 		return true;
+@@ -152,6 +160,8 @@ private:
+ 		       fsync(fd.get()) == 0;
+ 	}
+ 
++	const char* msg_;
++	std::string msg_key_;
+ 	std::string device_;
+ 	std::string snapshot_;
+ 	bool active_ = false;
+@@ -377,7 +387,8 @@ int TWinstall_zip(const char* path, int* wipe_cache, bool check_for_digest) {
+ 		mkdir("/system", 0755);
+ 	}
+ 
+-	RecoveryWriteGuard recovery_guard;
++	PartitionWriteGuard recovery_guard("/recovery", TW_PROTECT_RECOVERY_VAR, "protect_recovery");
++	PartitionWriteGuard boot_guard("/boot", TW_PROTECT_BOOT_VAR, "protect_boot");
+ 	time_t start, stop;
+ 	time(&start);
+ 
+@@ -437,6 +448,7 @@ int TWinstall_zip(const char* path, int* wipe_cache, bool check_for_digest) {
+ 		}
+ 	}
+ 	recovery_guard.Finish();
++	boot_guard.Finish();
+ 	time(&stop);
+ 	int total_time = (int) difftime(stop, start);
+ 	if (ret_val == INSTALL_CORRUPT) {
+diff --git a/variables.h b/variables.h
+index e49e024..ff058b4 100755
+--- a/variables.h
++++ b/variables.h
+@@ -155,6 +155,7 @@
+ #define TW_VIRTUAL_AB_ENABLED       "tw_virtual_ab.enabled"
+ #define TW_AUTO_REFLASHTWRP_VAR     "tw_auto_reflashtwrp"
+ #define TW_PROTECT_RECOVERY_VAR     "tw_protect_recovery"
++#define TW_PROTECT_BOOT_VAR         "tw_protect_boot"
+ 
+ // BUILD PROPS
+ #define TW_FASTBOOT_MODE_PROP         "ro.twrp.fastbootd"
+-- 
+2.56.0
+

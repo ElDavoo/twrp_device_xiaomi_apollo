@@ -31,6 +31,7 @@ Tested on M2007J3SG with LineageOS 24.0, FBE plus metadata encryption, hardware-
 | Status bar on the right, clear of the top-left punch hole | ✅ |
 | Installing LineageOS zips, with `addon.d` backup/restore | ✅ (lineage-24.0-20261107 nightly; see below) |
 | Zips cannot overwrite YARP (recovery partition write guard) | ✅ |
+| Zips cannot overwrite the boot partition / kernel (boot write guard, r3) | built, not yet tested on device |
 | Pattern / password credentials | same code path as PIN, not tested on device |
 | ROMs that run the SPU (`spdaemon`, e.g. possibly stock MIUI) | untested |
 | ROM security-patch update (2026-10 → 2026-11) without rebuilding recovery | ✅ |
@@ -65,7 +66,11 @@ recovery partition during zip install"**, which is on by default:
   it anyway, for example by clearing the read-only flag itself, the snapshot is written back and
   the install log says so.
 
-Turn the setting off when you *do* want a zip to install a recovery. Flashing an image from
+The same guard covers the **boot partition** (kernel, or a KernelSU/custom-kernel boot image) with
+**"Protect boot partition (kernel) during zip install"**, also on by default. A ROM update then keeps
+your kernel instead of replacing it with the stock one. Turn it off when you want a zip to update the kernel.
+
+Turn the recovery setting off when you *do* want a zip to install a recovery. Flashing an image from
 YARP's image-flash screen, or with `fastboot flash recovery`, is not affected.
 
 `tools/strip_recovery_from_ota.py` still works if you'd rather keep the step out of the zip. With
@@ -120,6 +125,7 @@ mka recoveryimage
 - `bootable_recovery/0001`: mount erofs read-only. A read-write mount fails with EACCES, so vendor and odm never mounted.
 - `bootable_recovery/0002`: `ro.twrp.gui2.status_right=true` moves the clock to the right side of the status bar.
 - `bootable_recovery/0003`: recovery partition write guard during zip installs. Adds the `tw_protect_recovery` setting, on by default, translated for en, ru, zh_CN and zh_TW.
+- `bootable_recovery/0004`: the same guard for the boot partition, with the `tw_protect_boot` setting (on by default).
 - `system_vold/0001`: honor `ro.crypto.dm_default_key.options_format.version` like AOSP and LineageOS do,
   and log the default-key key sizes. No key material is logged.
 
