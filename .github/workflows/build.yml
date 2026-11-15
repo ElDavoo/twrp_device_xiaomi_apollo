@@ -31,16 +31,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
-      - name: Free disk space and merge disks
-        uses: easimon/maximize-build-space@v10
-        with:
-          root-reserve-mb: 32768
-          swap-size-mb: 16384
-          remove-dotnet: "true"
-          remove-android: "true"
-          remove-haskell: "true"
-          remove-codeql: "true"
-          remove-docker-images: "true"
+      # Current ubuntu-24.04 runners have one 145 GB root disk and no separate /mnt
+      # disk, so maximize-build-space's LVM trick fills the root disk. Just delete
+      # the preinstalled toolchains we don't need and build on the root disk.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache /usr/local/share/boost /usr/share/swift /usr/local/julia* \
+            /usr/local/share/powershell /usr/share/miniconda /opt/az /usr/local/aws-cli \
+            /usr/local/share/chromium /opt/google /opt/microsoft /usr/lib/jvm
+          sudo docker system prune -af >/dev/null 2>&1 || true
+          sudo swapoff -a; sudo rm -f /mnt/swapfile /swapfile
+          sudo fallocate -l 16G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile >/dev/null && sudo swapon /swapfile
+          free -m; df -h /
 
       - name: Check out device tree
         uses: actions/checkout@v4
