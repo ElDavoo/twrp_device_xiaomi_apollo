@@ -42,8 +42,15 @@ jobs:
             /usr/local/share/powershell /usr/share/miniconda /opt/az /usr/local/aws-cli \
             /usr/local/share/chromium /opt/google /opt/microsoft /usr/lib/jvm
           sudo docker system prune -af >/dev/null 2>&1 || true
+          # Soong's analysis alone needs ~25+ GB on this tree and the runner has 16 GB:
+          # compressed RAM swap first (Go heap compresses well), then a disk swap file.
           sudo swapoff -a; sudo rm -f /mnt/swapfile /swapfile
-          sudo fallocate -l 16G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile >/dev/null && sudo swapon /swapfile
+          sudo modprobe zram && echo zstd | sudo tee /sys/block/zram0/comp_algorithm >/dev/null &&
+            echo 16G | sudo tee /sys/block/zram0/disksize >/dev/null && sudo mkswap /dev/zram0 >/dev/null &&
+            sudo swapon -p 100 /dev/zram0 || echo "zram not available"
+          sudo fallocate -l 24G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile >/dev/null && sudo swapon -p 10 /swapfile
+          sudo sysctl -q vm.swappiness=100
+          swapon --show
           free -m; df -h /
 
       - name: Check out device tree
