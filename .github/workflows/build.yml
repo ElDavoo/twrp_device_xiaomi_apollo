@@ -23,7 +23,7 @@ env:
   MANIFEST_URL: https://github.com/TWRP-Test/platform_manifest_twrp_aosp.git
   MANIFEST_BRANCH: twrp-16.0
   LUNCH_TARGET: twrp_apollo-bp2a-eng
-  CCACHE_DIR: /home/runner/.ccache
+  CCACHE_DIR: ${{ github.workspace }}/ccache
   CCACHE_MAXSIZE: 8G
 
 jobs:
@@ -125,18 +125,36 @@ jobs:
 
       - name: Prepare build
         working-directory: src
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           # Keep the runner agent alive under memory pressure: let the kernel kill a
           # compiler instead (a killed agent loses the whole job and its logs).
           for p in $(pgrep -f 'Runner.(Listener|Worker)'); do echo -1000 | sudo tee /proc/$p/oom_score_adj >/dev/null; done
           # Log memory/disk every minute so a dying runner leaves a trace.
+          # Also upload it to a draft release every 2 minutes, because the job log is
+          # lost if the runner dies (seen twice ~48 min into the build).
+          gh release view ci-diagnostics >/dev/null 2>&1 ||
+            gh release create ci-diagnostics --draft --title "CI diagnostics" --notes "Resource log of the last CI build" || true
           cat > "$RUNNER_TEMP/mon.sh" <<'SH'
           #!/bin/bash
+          n=0
           while sleep 60; do
-            echo "[mon $(date +%T)] $(free -m | awk '/Mem/{printf "mem used %sM avail %sM ", $3, $7} /Swap/{printf "swap %sM ", $3}') disk avail: $(df -h --output=avail "$1" / | tail -2 | tr '\n' ' ')"
+            {
+              echo "=== $(date +%T)"
+              free -m | sed -n 2,3p
+              df -h / "$1" | tail -2
+              du -sh "$CCACHE_DIR" "$1/out" /tmp 2>/dev/null | tr '\n' ' '; echo
+              ps -eo rss,pcpu,comm --sort=-rss | head -6
+              sudo dmesg | grep -iE "oom|killed|out of memory|no space" | tail -3
+            } >> "$GITHUB_WORKSPACE/monitor.log" 2>&1
+            n=$((n + 1))
+            [ $((n % 2)) -eq 0 ] && tail -c 200000 "$GITHUB_WORKSPACE/monitor.log" > "$RUNNER_TEMP/monitor-tail.log" &&
+              gh release upload ci-diagnostics "$RUNNER_TEMP/monitor-tail.log" --clobber >/dev/null 2>&1
           done
           SH
-          nohup bash "$RUNNER_TEMP/mon.sh" "$PWD" > "$GITHUB_WORKSPACE/monitor.log" 2>&1 &
+          nohup bash "$RUNNER_TEMP/mon.sh" "$PWD" >/dev/null 2>&1 &
           cat > ci-build.sh <<'SH'
           #!/bin/bash
           # usage: ci-build.sh <minutes>
@@ -144,11 +162,12 @@ jobs:
           export CCACHE_COMPILERCHECK=content CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true
           export CCACHE_SLOPPINESS=time_macros,file_macro,include_file_mtime,include_file_ctime
           export ALLOW_MISSING_DEPENDENCIES=true
+          export TMPDIR="$GITHUB_WORKSPACE/tmp"; mkdir -p "$TMPDIR"
           set +e
-          timeout --signal=INT "${1}m" bash -c 'source build/envsetup.sh && lunch "$LUNCH_TARGET" && m -j3 recoveryimage'
+          timeout --signal=INT "${1}m" nice -n 10 bash -c 'source build/envsetup.sh && lunch "$LUNCH_TARGET" && m -j3 recoveryimage'
           rc=$?
           ccache -s | head -20
-          tail -5 "$GITHUB_WORKSPACE/monitor.log"
+          tail -25 "$GITHUB_WORKSPACE/monitor.log"
           exit $rc
           SH
           chmod +x ci-build.sh
