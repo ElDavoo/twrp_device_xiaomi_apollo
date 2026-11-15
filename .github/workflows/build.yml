@@ -120,32 +120,71 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ env.LUNCH_TARGET }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ccache-${{ env.LUNCH_TARGET }}-${{ github.run_id }}-${{ github.run_attempt }}-0
           restore-keys: ccache-${{ env.LUNCH_TARGET }}-
 
-      - name: Build recovery image
-        id: build
+      - name: Prepare build
         working-directory: src
         run: |
-          ccache -z
+          # Keep the runner agent alive under memory pressure: let the kernel kill a
+          # compiler instead (a killed agent loses the whole job and its logs).
+          for p in $(pgrep -f 'Runner.(Listener|Worker)'); do echo -1000 | sudo tee /proc/$p/oom_score_adj >/dev/null; done
+          # Log memory/disk every minute so a dying runner leaves a trace.
+          cat > "$RUNNER_TEMP/mon.sh" <<'SH'
+          #!/bin/bash
+          while sleep 60; do
+            echo "[mon $(date +%T)] $(free -m | awk '/Mem/{printf "mem used %sM avail %sM ", $3, $7} /Swap/{printf "swap %sM ", $3}') disk avail: $(df -h --output=avail "$1" / | tail -2 | tr '\n' ' ')"
+          done
+          SH
+          nohup bash "$RUNNER_TEMP/mon.sh" "$PWD" > "$GITHUB_WORKSPACE/monitor.log" 2>&1 &
+          cat > ci-build.sh <<'SH'
+          #!/bin/bash
+          # usage: ci-build.sh <minutes>
           export USE_CCACHE=1 CCACHE_EXEC=/usr/bin/ccache CC_WRAPPER=/usr/bin/ccache CXX_WRAPPER=/usr/bin/ccache
-          export CCACHE_COMPILERCHECK=content CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true CCACHE_SLOPPINESS=time_macros,file_macro,include_file_mtime,include_file_ctime
+          export CCACHE_COMPILERCHECK=content CCACHE_BASEDIR="$PWD" CCACHE_NOHASHDIR=true
+          export CCACHE_SLOPPINESS=time_macros,file_macro,include_file_mtime,include_file_ctime
           export ALLOW_MISSING_DEPENDENCIES=true
           set +e
-          # Leave time to save the ccache if the build runs long; a re-run then continues from it.
-          timeout --signal=INT 270m bash -c 'source build/envsetup.sh && lunch "$LUNCH_TARGET" && mka recoveryimage'
+          timeout --signal=INT "${1}m" bash -c 'source build/envsetup.sh && lunch "$LUNCH_TARGET" && m -j3 recoveryimage'
           rc=$?
-          set -e
-          ccache -s
-          df -h .
+          ccache -s | head -20
+          tail -5 "$GITHUB_WORKSPACE/monitor.log"
           exit $rc
+          SH
+          chmod +x ci-build.sh
+          ccache -z
 
-      - name: Save ccache
-        if: always() && steps.build.outcome != 'skipped'
+      # The build is split in two time-boxed parts so ccache is saved midway: if the
+      # job dies or times out, the next run starts from that cache.
+      - name: Build recovery image (part 1)
+        id: build1
+        continue-on-error: true
+        working-directory: src
+        run: ./ci-build.sh 120
+
+      - name: Save ccache (part 1)
+        if: always() && steps.build1.outcome != 'skipped'
         uses: actions/cache/save@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ env.LUNCH_TARGET }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ccache-${{ env.LUNCH_TARGET }}-${{ github.run_id }}-${{ github.run_attempt }}-1
+
+      - name: Build recovery image (part 2)
+        id: build2
+        if: steps.build1.outcome == 'failure'
+        working-directory: src
+        run: ./ci-build.sh 150
+
+      - name: Save ccache (part 2)
+        if: always() && steps.build2.outcome != 'skipped'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ env.LUNCH_TARGET }}-${{ github.run_id }}-${{ github.run_attempt }}-2
+
+      - name: Show resource log
+        if: always()
+        run: cat monitor.log 2>/dev/null | tail -60 || true
 
       - name: Collect image
         id: img
