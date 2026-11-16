@@ -11,7 +11,7 @@ While a zip runs, set the recovery block device read-only (BLKROSET) so
 any write path fails (edify, dd, by-name or raw node), after snapshotting
 it; afterwards clear the flag, compare, and write the snapshot back if
 the partition still changed. Controlled by tw_protect_recovery (default
-on), exposed in General settings and the install options on devices
+off), exposed in General settings and the install options on devices
 with a recovery partition.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -37,7 +37,7 @@ index c22ec4e..d677bf5 100644
    persist_[TW_TIME_ZONE_GUIOFFSET] = false;
    persist_[TW_TIME_ZONE_GUIDST] = false;
    persist_[TW_AUTO_REFLASHTWRP_VAR] = false;
-+  persist_[TW_PROTECT_RECOVERY_VAR] = true;
++  persist_[TW_PROTECT_RECOVERY_VAR] = false;
  
  #ifdef TW_NO_FLASH_CURRENT_TWRP
    consts_["tw_no_flash_current_twrp"] = true;
@@ -59,7 +59,7 @@ index e308839..6a9863e 100644
        flag("tw_is_vendor_boot_header_v3", 0) == 0)
      add(text.general_reflash_twrp, "tw_auto_reflashtwrp", flag("tw_auto_reflashtwrp", 0) != 0);
 +  if (flag("tw_has_recovery_partition", 0) != 0)
-+    add(text.general_protect_recovery, "tw_protect_recovery", flag("tw_protect_recovery", 1) != 0);
++    add(text.general_protect_recovery, "tw_protect_recovery", flag("tw_protect_recovery", 0) != 0);
    add(text.general_install_reboot, "tw_install_reboot", flag("tw_install_reboot", 0) != 0);
  }
  
@@ -215,7 +215,7 @@ index 2763db4..c624784 100755
 +//  2. Its contents are snapshotted beforehand and compared afterwards; if it
 +//     still changed (e.g. a script cleared the read-only flag), the snapshot
 +//     is written back.
-+// Controlled by tw_protect_recovery (on by default).
++// Controlled by tw_protect_recovery (off by default).
 +class RecoveryWriteGuard {
 +public:
 +	RecoveryWriteGuard() {

@@ -56,7 +56,7 @@ fastboot reboot recovery
 
 LineageOS zips for apollo **always flash their own `recovery.img`** as the last step of the
 updater script. This build blocks that inside YARP itself, with **Settings → General → "Protect
-recovery partition during zip install"**, which is on by default:
+recovery partition during zip install"**, which is off by default:
 
 - Before a zip runs, YARP snapshots the recovery partition and makes its block device read-only
   (`BLKROSET`). Every write path fails: edify `package_extract_file`, `dd` from scripts,
@@ -67,10 +67,10 @@ recovery partition during zip install"**, which is on by default:
   the install log says so.
 
 The same guard covers the **boot partition** (kernel, or a KernelSU/custom-kernel boot image) with
-**"Protect boot partition (kernel) during zip install"**, also on by default. A ROM update then keeps
-your kernel instead of replacing it with the stock one. Turn it off when you want a zip to update the kernel.
+**"Protect boot partition (kernel) during zip install"**, also off by default. A ROM update then keeps
+your kernel instead of replacing it with the stock one. Leave it off when you want a zip to update the kernel.
 
-Turn the recovery setting off when you *do* want a zip to install a recovery. Flashing an image from
+Leave the recovery setting off when you *do* want a zip to install a recovery. Flashing an image from
 YARP's image-flash screen, or with `fastboot flash recovery`, is not affected.
 
 `tools/strip_recovery_from_ota.py` still works if you'd rather keep the step out of the zip. With
@@ -134,8 +134,8 @@ and it continues from the saved ccache. Set `release_tag` to publish a release w
 
 - `bootable_recovery/0001`: mount erofs read-only. A read-write mount fails with EACCES, so vendor and odm never mounted.
 - `bootable_recovery/0002`: `ro.twrp.gui2.status_right=true` moves the clock to the right side of the status bar.
-- `bootable_recovery/0003`: recovery partition write guard during zip installs. Adds the `tw_protect_recovery` setting, on by default, translated for en, ru, zh_CN and zh_TW.
-- `bootable_recovery/0004`: the same guard for the boot partition, with the `tw_protect_boot` setting (on by default).
+- `bootable_recovery/0003`: recovery partition write guard during zip installs. Adds the `tw_protect_recovery` setting, off by default, translated for en, ru, zh_CN and zh_TW.
+- `bootable_recovery/0004`: the same guard for the boot partition, with the `tw_protect_boot` setting (off by default).
 - `system_vold/0001`: honor `ro.crypto.dm_default_key.options_format.version` like AOSP and LineageOS do,
   and log the default-key key sizes. No key material is logged.
 

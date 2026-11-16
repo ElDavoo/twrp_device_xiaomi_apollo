@@ -11,11 +11,6 @@ on:
         description: "LineageOS apollon OTA to take vendor blobs from (empty = latest nightly)"
         required: false
         default: ""
-      protect_default:
-        description: "Default of the 'protect recovery/boot during zip install' switches (off = switches start disabled)"
-        type: choice
-        options: ["off", "on"]
-        default: "off"
 
 permissions:
   contents: write
@@ -131,18 +126,6 @@ jobs:
           # The build does not need git history; free the space.
           rm -rf .repo
           df -h .
-
-      - name: Set default of the protect switches
-        if: inputs.protect_default != 'on'
-        working-directory: src/bootable/recovery
-        run: |
-          # The patches make both switches default to on; start them disabled instead.
-          grep -rlE 'tw_protect_(recovery|boot)|TW_PROTECT_(RECOVERY|BOOT)_VAR' --include='*.cpp' --include='*.h' . |
-            xargs sed -i -E \
-              -e 's/(persist_\[TW_PROTECT_(RECOVERY|BOOT)_VAR\] = )true;/\1false;/' \
-              -e 's/(flag\("tw_protect_(recovery|boot)", )1\)/\10)/'
-          grep -rnE 'persist_\[TW_PROTECT_.*\] = |flag\("tw_protect_' . | tee /tmp/protect-defaults.txt
-          ! grep -E '= true;|, 1\)' /tmp/protect-defaults.txt
 
       - name: Restore ccache
         uses: actions/cache/restore@v4
